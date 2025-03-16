@@ -9,15 +9,15 @@ This repository documents my implementation of a real-time monitoring dashboard 
 
 ## System Specifications
 
-(insert hardware pic here)
+![Raspberry Pi 5 Hardware](/images/kubepi5physical.JPG)
+*My Raspberry Pi 5 setup*
 
-My Raspberry Pi 5 setup
 - **Hardware**: Raspberry Pi 5 (4GB RAM)
 - **Storage**: 64GB microSD card
 - **Operating System**: Ubuntu 24.04 LTS (64-bit)
-- **Network**: Static IP configuration on Ethernet (eth0), example IP: 192.168.1.200
-- **Router**: AT&T Fiber (example gateway: 192.168.1.1)
-- **Existing Setup**: Pi-hole running as a pod in MicroK8s, accessible at http://192.168.1.200/admin/
+- **Network**: Static IP configuration on Ethernet (eth0), example IP: 192.178.1.5
+- **Router**: AT&T Fiber (example gateway: 192.178.1.1)
+- **Existing Setup**: Pi-hole running as a pod in MicroK8s, accessible at http://192.178.1.5/admin/
 
 ## Installation Steps
 
@@ -35,10 +35,10 @@ microk8s kubectl get nodes         # Showed bryan-pi as Ready
 ```yaml
 microk8s kubectl get pods          # pihole-645b4448c7-qmvw7 (1/1 Running, 44h)
 ```
-- Verified services: Pi-hole accessible at 192.168.1.200:80.
+- Verified services: Pi-hole accessible at 192.178.1.5:80.
 
 ### 3. Install Pi-hole Exporter
-- Deployed with pihole-exporter.yaml:
+- Deployed with `pihole-exporter.yaml`:
 
 ```yaml
 apiVersion: apps/v1
@@ -60,18 +60,22 @@ spec:
         image: ekofr/pihole-exporter:latest
         env:
         - name: PIHOLE_HOSTNAME
-          value: "192.168.1.200"
+          value: "192.178.1.5"
         - name: PIHOLE_PASSWORD
           value: "<your-pihole-web-password>"
         ports:
         - containerPort: 9617
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
 ```
 
 - Applied: `microk8s kubectl apply -f pihole-exporter.yaml.`
 
 ### 4. Install Prometheus
 
-- Deployed with prometheus.yaml:
+- Deployed with `prometheus.yaml`:
 
 ```yaml
 apiVersion: apps/v1
@@ -141,11 +145,12 @@ spec:
       - name: grafana
         image: grafana/grafana:latest
         ports:
-        - containerPort: 3000
-```
-- Exposed via NodePort service:
-
-```yaml
+        - containerPort: 4000
+        resources:
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -154,8 +159,8 @@ spec:
   selector:
     app: grafana
   ports:
-  - port: 3000
-    targetPort: 3000
+  - port: 4000
+    targetPort: 4000
   type: NodePort
 ```
 - Applied: `microk8s kubectl apply -f grafana.yaml`.
@@ -164,10 +169,9 @@ spec:
 
 - Added Prometheus as Grafana data source: `http://prometheus:9090`.
 - Imported Grafana dashboard ID `10176` (Pi-hole Exporter).
-- Accessed Grafana at `http://192.168.1.200:31535 (NodePort)`.
+- Accessed Grafana at `http://192.178.1.5:31535 (NodePort)`.
 
-( INSERT PIC HERE GRAFNA DASH )
-
+![Grafana Dashboard](/images/Screenshot%202025-03-16%20181927.png)
 Sample Grafana dashboard showing Pi-hole metrics
 
 ## Implementation Steps
@@ -179,25 +183,25 @@ Sample Grafana dashboard showing Pi-hole metrics
 
 ### 2. Confirm Pi-hole Pod
 - Identified existing Pi-hole pod: `pihole-645b4448c7-qmvw7` (1/1 Running, 44h).
-- Checked services: `microk8s kubectl get svc` showed only `kubernetes` service, assumed Pi-hole at `192.168.1.200:80`.
+- Checked services: `microk8s kubectl get svc` showed only `kubernetes` service, assumed Pi-hole at `192.178.1.5:80`.
 
 # Troubleshooting Challenges & Solutions
 
 ## 1. Pi-hole Exporter Metrics Failure
 
-Challenge: Initial `http://192.168.1.200:9617/metrics` failed with "connection refused"; later showed only Go metrics.
+Challenge: Initial `http://192.178.1.5:9617/metrics` failed with "connection refused"; later showed only Go metrics.
 Solution:
 
-- Adjusted `PIHOLE_HOSTNAME` to `192.168.1.200` (removed port and path).
+- Adjusted `PIHOLE_HOSTNAME` to `192.178.1.5` (removed port and path).
 - Corrected `PIHOLE_PASSWORD` after verifying logs (`/api/auth 404`).
-- Validated metrics with `curl http://192.168.1.200:9617/metrics`.
+- Validated metrics with `curl http://192.178.1.5:9617/metrics`.
 
 ## 2. Grafana Access Denied
 
-Challenge: `http://192.168.1.200:3000` failed with "connection refused".
+Challenge: `http://192.178.1.5:4000` failed with "connection refused".
 Solution:
 
-- Tested locally: `curl http://127.0.0.1:3000` succeeded.
+- Tested locally: `curl http://127.0.0.1:4000` succeeded.
 - Used NodePort (`31535`) instead of port-forwarding for stable access.
 
 ## Performance Verification
@@ -220,7 +224,7 @@ Response time: Queries processed in <10ms.
 - Deployed a real-time Pi-hole monitoring dashboard with MicroK8s.
 - Integrated Prometheus and Grafana for comprehensive DNS metrics.
 - Resolved networking and API configuration challenges.
-- Achieved accessible visualization at `http://192.168.1.200:31535`.
+- Achieved accessible visualization at `http://192.178.1.5:31535`.
 
 ## Skills Demonstrated
 
@@ -235,3 +239,10 @@ Response time: Queries processed in <10ms.
 - Optimize resource usage with lighter container images.
 - Add alerting rules in Prometheus for query spikes or failures.
 - Enhance dashboard with custom panels for detailed client analysis.
+
+## Resources
+
+- [Pi-hole Exporter](https://github.com/eko/pihole-exporter)
+- [Prometheus Documentation](https://prometheus.io/docs/introduction/overview/)
+- [Grafana Documentation](https://grafana.com/docs/)
+- [MicroK8s Documentation](https://microk8s.io/docs)
